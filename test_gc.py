@@ -99,7 +99,7 @@ def day_difference(time_now: datetime, metatime: datetime) -> int:
 
 def mark(threshold: int) -> None:
     #path = os.path.join(self.repo_dir, "metadata")
-    path = "/home/iiita/supplychain/python-tuf/examples/manual_repo/tmpsp2y1znf"
+    path = "python-tuf/examples/manual_repo/tmpsp2y1znf"
     sorted_items = sorted_file(path)
     time_now = datetime.now(timezone.utc)
     for item in sorted_items:
