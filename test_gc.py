@@ -41,16 +41,12 @@ from tuf.api.metadata import (
 )
 
 
-
-
-
 class Target:
-        def __init__(self, delete: bool = False, filename: str = ""):
-                self.delete = delete
-                self.filename = filename
-        def __str__(self):
-                return f"Target(filename={self.filename}, delete={self.delete})"
-Targets = dict[str, Target]
+    def __init__(self, delete: bool = False, filename: str = ""):
+        self.delete = delete
+        self.filename = filename
+    def __str__(self):
+        return f"{self.filename}, {self.delete}"
 
 class TargetsMetadata:
     def __init__(self, version: int = 0, targets: Targets = None, delete: bool = False, filename: str = ""):
@@ -61,26 +57,11 @@ class TargetsMetadata:
     def get_targets(self):
         return self.targets
     def __str__(self):
-        return f"TargetsMetadata({self.filename}, {self.delete})"
+        return f"{self.filename}, {self.delete}"
 
-unexpired_snapshots = {
-    2: {
-        "targets.json": TargetsMetadata(2, {
-            "target2.txt": Target(),
-        }),
-        "foo.json": TargetsMetadata(2),
-    }
-}
 
-expired_snapshots = {
-    1: {
-            "targets.json": TargetsMetadata(1, {
-                    "target2.txt": Target(),
-            "target1.txt": Target(),
-        }),
-            "foo.json": TargetsMetadata(1),
-    }
-}
+expired_snapshots = {}
+unexpired_snapshots = {}
 
 
 def sorted_file(directory: str):
@@ -97,9 +78,13 @@ def day_difference(time_now: datetime, metatime: datetime) -> int:
     diff_days = time_now - metatime
     return diff_days.days
 
+
 def mark(threshold: int) -> None:
+    #TODO - uncomment the following line for the automatic path
     #path = os.path.join(self.repo_dir, "metadata")
-    path = "python-tuf/examples/manual_repo/tmpsp2y1znf"
+    #TODO - Delete following line for the automatic path
+    path = "/home/iiita/supplychain/python-tuf/examples/manual_repo/tmpsp2y1znf"
+    global expired_snapshots
     sorted_items = sorted_file(path)
     time_now = datetime.now(timezone.utc)
     for item in sorted_items:
@@ -107,25 +92,54 @@ def mark(threshold: int) -> None:
         snapshot_expiry = snapshot.expires
         snapshot_version = snapshot.version
         snapshot_days_diff = day_difference(time_now, snapshot_expiry)
-        # Verify with snapshot expiry date
-        if(snapshot_days_diff > threshold):   
-            for snapshot_meta in snapshot.meta:
-                version = snapshot.meta[snapshot_meta].version
-                targets_meta = Metadata[Targets].from_file(os.path.join(path, snapshot_meta)).signed
+        if(snapshot_days_diff > threshold):
+            expired_snapshots[snapshot_version] = {}
+            for targets_in_snapshot in snapshot.meta:
+                targets_meta = Metadata[Targets].from_file(os.path.join(path, targets_in_snapshot)).signed
                 targets_expiry = targets_meta.expires
+                targets_version = targets_meta.version
                 targets_days_diff = day_difference(time_now, targets_expiry)
-                # Verify with snapshot expiry date
                 if(targets_days_diff > threshold):
+                    expired_snapshots[snapshot_version][targets_in_snapshot] = TargetsMetadata(targets_version, {}, True, targets_in_snapshot)
                     for targets_file in targets_meta.targets:
-                        target_meta = unexpired_snapshots[2]["targets.json"]
-                        target_meta.targets[targets_file] = Target(True,targets_file)
-                        print(unexpired_snapshots[2]["targets.json"].get_targets()[targets_file])
+                        expired_snapshots[snapshot_version][targets_in_snapshot].targets[targets_file] =  Target(True, targets_file)
                 else:
+                    expired_snapshots[snapshot_version][targets_in_snapshot] = TargetsMetadata(targets_version, {}, False, targets_in_snapshot)
                     for targets_file in targets_meta.targets:
-                        target_meta = expired_snapshots[1]["targets.json"]
-                        target_meta.targets[targets_file] = Target(False,target_file)
-                        print(expired_snapshots[1]["targets.json"].get_targets()[targets_file])
+                        expired_snapshots[snapshot_version][targets_in_snapshot].targets[targets_file] =  Target(False, targets_file)
+        else:
+            unexpired_snapshots[snapshot_version] = {}
+            for targets_in_snapshot in snapshot.meta:
+                targets_meta = Metadata[Targets].from_file(os.path.join(path, targets_in_snapshot)).signed
+                targets_expiry = targets_meta.expires
+                targets_version = targets_meta.version
+                targets_days_diff = day_difference(time_now, targets_expiry)
+                if(targets_days_diff > threshold):
+                    unexpired_snapshots[snapshot_version][targets_in_snapshot] = TargetsMetadata(targets_version, {}, True, targets_in_snapshot)
+                    for targets_file in targets_meta.targets:
+                        unexpired_snapshots[snapshot_version][targets_in_snapshot].targets[targets_file] =  Target(True, targets_file)
+                else:
+                    unexpired_snapshots[snapshot_version][targets_in_snapshot] = TargetsMetadata(targets_version, {}, False, targets_in_snapshot)
+                    for targets_file in targets_meta.targets:
+                        unexpired_snapshots[snapshot_version][targets_in_snapshot].targets[targets_file] =  Target(False, targets_file)
+
+def expired_unexpired_display(snapshot_type: str) -> None:
+    snapshot = globals()[snapshot_type]
+    for outer_key, inner_dict in snapshot.items():
+        print(f"Outer key: {outer_key}")
+        for inner_key, value in inner_dict.items():
+            print(f"  Inner key: {inner_key}-> {value} ")
+            targets = value.get_targets()
+            for target, data in targets.items():
+                print(f"    Target: {target} -> {data}")
+
 if __name__ == "__main__":
     # A file will be considered as garbage if the expiry is more than or euqal to the threshold number of days
     threshold =  3
     mark(threshold)
+    print("----------------Expired List--------------------")
+    expired_unexpired_display("expired_snapshots")
+    print("---------------Unexpired List-------------------")
+    expired_unexpired_display("unexpired_snapshots")
+
+
